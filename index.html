@@ -1,0 +1,538 @@
+<title>No Thanks Table</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: one plain column. Open card and your two buttons first, then each player as a name,
+     chip count and a list of the numbers they hold. */
+  :root {
+    --bg: #f4f6f5;
+    --ink: #17252a;
+    --muted: #5d7074;
+    --line: #cdd7d5;
+    --btn-bg: #17252a;
+    --btn-fg: #f4f6f5;
+    --pass-bg: #e3b13d;
+    --pass-fg: #2f2200;
+    --good: #1c7650;
+    --bad: #b4372b;
+    --focus: #2a6ad0;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121c20; --ink: #e8efee; --muted: #92a6a9; --line: #2c3f46;
+      --btn-bg: #e8efee; --btn-fg: #121c20; --good: #55c593; --bad: #f08577; --focus: #7aaaff;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121c20; --ink: #e8efee; --muted: #92a6a9; --line: #2c3f46;
+    --btn-bg: #e8efee; --btn-fg: #121c20; --good: #55c593; --bad: #f08577; --focus: #7aaaff;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 20px 40px;
+  }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .app { max-width: 680px; margin: 0 auto; display: grid; gap: 22px; }
+
+  h1 { margin: 0; font-size: 22px; letter-spacing: .01em; }
+  .sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--muted); }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  .controls select { background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; color: var(--ink); }
+  .linkbtn { background: none; border: 1px solid var(--ink); border-radius: 4px; padding: 3px 12px; cursor: pointer; font-weight: 600; }
+  .linkbtn:hover { background: var(--ink); color: var(--bg); }
+
+  .table { display: grid; gap: 12px; }
+  #me { padding-block: 14px; border-block: 1px solid var(--line); }
+  .open { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  .open .num { font: 700 88px/1 var(--mono); letter-spacing: -.02em; }
+  .open .pile { font: 15px var(--mono); color: var(--muted); }
+  .open .pile b { color: var(--ink); font-weight: 600; }
+  .status { margin: 0; font-weight: 600; }
+  .hint { margin: 0; color: var(--muted); font-size: 14px; }
+  .hint .good { color: var(--good); font-weight: 600; }
+  .hint .bad { color: var(--bad); font-weight: 600; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; }
+  .act { border: 0; border-radius: 6px; padding: 10px 18px; font-weight: 700; cursor: pointer; min-width: 150px; text-align: left; }
+  .act small { display: block; font-weight: 400; font-size: 12px; opacity: .8; }
+  .act.pass { background: var(--pass-bg); color: var(--pass-fg); }
+  .act.take { background: var(--btn-bg); color: var(--btn-fg); }
+  .act:disabled { opacity: .35; cursor: not-allowed; }
+  .meta { font: 12px var(--mono); color: var(--muted); }
+
+  .seats { display: grid; gap: 12px; }
+  .seat { display: grid; gap: 2px; }
+  .seat .row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .seat .name { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+  .seat.active .name::after { content: ' ◀'; }
+  .seat .stats { font: 13px var(--mono); color: var(--muted); white-space: nowrap; }
+  .seat .stats b { color: var(--ink); font-weight: 600; }
+  .seat .cards { font: 15px var(--mono); overflow-wrap: anywhere; min-height: 1.5em; }
+  .seat .cards .cov { color: var(--muted); text-decoration: line-through; opacity: .7; }
+  .seat .cards .none { color: var(--muted); }
+
+  .log { margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+  .log li:first-child { color: var(--ink); }
+
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; overflow-wrap: anywhere; }
+  th { font: 12px var(--mono); color: var(--muted); font-weight: 400; }
+  tr.win td { font-weight: 700; }
+  .tablewrap { overflow-x: auto; }
+  h2 { margin: 0; font-size: 20px; }
+
+  details { color: var(--muted); font-size: 13px; }
+  details summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+  details ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+  details a { color: inherit; }
+
+  @media (max-width: 480px) { .open .num { font-size: 72px; } .act { flex: 1 1 140px; } }
+</style>
+
+<div class="app">
+  <header>
+    <h1>No Thanks!</h1>
+    <p class="sub">Pay a chip to pass, or take the card and the chips on it. Lowest score wins.</p>
+  </header>
+
+  <div class="controls">
+    <label for="sel-bots">Opponents
+      <select id="sel-bots">
+        <option value="2">2</option><option value="3" selected>3</option><option value="4">4</option>
+        <option value="5">5</option><option value="6">6</option>
+      </select>
+    </label>
+    <label for="sel-pool">Bots
+      <select id="sel-pool">
+        <option value="mixed" selected>Mixed</option>
+        <option value="rust">Rust pool only</option>
+        <option value="strong">Strongest</option>
+      </select>
+    </label>
+    <label for="sel-speed">Bot speed
+      <select id="sel-speed">
+        <option value="1400">Slow</option><option value="800" selected>Normal</option><option value="250">Fast</option>
+      </select>
+    </label>
+    <label for="chk-chips"><input type="checkbox" id="chk-chips"> Show everyone's chips</label>
+    <button class="linkbtn" id="btn-new" type="button">New game</button>
+  </div>
+
+  <section class="seats" id="seats" aria-label="Opponents"></section>
+  <section class="seats" id="me" aria-label="You"></section>
+  <section class="table" id="stage" aria-label="Table"></section>
+
+  <details>
+    <summary>Rules and bots</summary>
+    <ul>
+      <li>Cards 3 to 35, 9 removed unseen, so 24 are played. Chips at the start: 11 each for 3 to 5 players, 9 for 6, 7 for 7.</li>
+      <li>Pass by paying a chip, or take the card and every chip on it. With no chips you must take it. Whoever takes a card turns over the next one.</li>
+      <li>In a run of consecutive numbers only the lowest card scores; the others are shown struck through. Each chip left is −1.</li>
+      <li>Opponents' chips are hidden until the end unless you tick the box.</li>
+      <li>Bots: "Rust pool" is the 49 strategies from your tournament file, ported to JavaScript (over 1M five-player games each bot's win rate matches the Rust program's within 0.5 points). "Mixed" seats one of three bots I wrote plus the Rust pool; "Strongest" seats my three plus PhasedBargain with opening limits 6 to 10, the best Rust bots.</li>
+      <li>My bots, in five-player games of about 500 to 4,500 each: Claude MonteCarlo(rollouts=150) won about 54% against four of the top five Rust bots (an equal share is 20%; PhasedBargain(9) gets about 24%, so it is clearly stronger). MonteCarlo(40) won about 42%. Claude Squeeze won about 24%, no better than PhasedBargain(9) it is built on. Monte Carlo plays by simulating the rest of the game from the unseen cards, and it aims to win, not to post a low score.</li>
+      <li>Rules checked against the <a href="https://en.wikipedia.org/wiki/No_Thanks!_(game)" target="_blank" rel="noopener">published rules summary</a> and the <a href="https://www.amigo.games/game/nothanks" target="_blank" rel="noopener">publisher's page</a>.</li>
+    </ul>
+  </details>
+</div>
+
+<script id="engine">
+const NT = (() => {
+  const MIN = 3, MAX = 35, REMOVED = 9;
+  const startChips = n => (n <= 5 ? 11 : n === 6 ? 9 : 7);
+
+  function shuffle(a, rng) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  // Group cards into runs of consecutive numbers, ascending.
+  function runsOf(cards) {
+    const s = [...cards].sort((a, b) => a - b);
+    const runs = [];
+    for (const c of s) {
+      const last = runs[runs.length - 1];
+      if (last && last[last.length - 1] === c - 1) last.push(c);
+      else runs.push([c]);
+    }
+    return runs;
+  }
+  // Only the lowest card of each run scores.
+  const cardPoints = cards => runsOf(cards).reduce((t, r) => t + r[0], 0);
+  const score = p => cardPoints(p.cards) - p.chips;
+
+  function newGame(specs, rng = Math.random) {
+    const n = specs.length;
+    const deck = [];
+    for (let v = MIN; v <= MAX; v++) deck.push(v);
+    shuffle(deck, rng);
+    deck.splice(0, REMOVED); // nine cards removed, unseen
+    const chips = startChips(n);
+    const g = {
+      players: specs.map(s => ({ ...s, chips, cards: [] })),
+      deck, current: null, pile: 0,
+      turn: Math.floor(rng() * n), over: false, startChips: chips,
+    };
+    g.current = g.deck.pop();
+    return g;
+  }
+
+  function act(g, action) {
+    if (g.over) throw new Error('game over');
+    const p = g.players[g.turn];
+    let ev;
+    if (action === 'pass') {
+      if (p.chips < 1) throw new Error('no chips: must take');
+      p.chips--; g.pile++;
+      ev = { type: 'pass', player: g.turn, card: g.current, pile: g.pile };
+      g.turn = (g.turn + 1) % g.players.length;
+    } else {
+      p.cards.push(g.current); p.chips += g.pile;
+      ev = { type: 'take', player: g.turn, card: g.current, chips: g.pile };
+      g.pile = 0;
+      if (g.deck.length === 0) { g.over = true; g.current = null; }
+      else g.current = g.deck.pop();
+    }
+    return ev;
+  }
+
+  // Change in card points if player p took card c (same as nt_card_cost in the Rust sim).
+  const takeDelta = (p, c) => {
+    const added = p.cards.includes(c - 1) ? 0 : c;
+    const removed = p.cards.includes(c + 1) ? c + 1 : 0;
+    return added - removed;
+  };
+
+  /* ------------------------------------------------------------------
+     Bot pool: a port of the 49 strategies in main_LQ.rs.
+     A bot is { name, take(g) -> boolean }. Forced takes at zero chips
+     are applied by botChoose, as in nt_move.
+     ------------------------------------------------------------------ */
+  const netCost = g => takeDelta(g.players[g.turn], g.current) - g.pile;
+  const connects = (p, c) => p.cards.includes(c - 1) || p.cards.includes(c + 1);
+
+  function humanBargain(g, minPile) {
+    const p = g.players[g.turn], c = g.current, pile = g.pile;
+    return p.chips === 0 || connects(p, c) || (pile >= minPile && c - pile <= 5);
+  }
+  function improvedBargain(g, minPile, maxNet, waitForChip) {
+    const p = g.players[g.turn], c = g.current, pile = g.pile;
+    if (p.chips === 0) return true;
+    if (connects(p, c)) {
+      return !waitForChip || pile > 0 ||
+        g.players.some((o, i) => i !== g.turn && connects(o, c));
+    }
+    return pile >= minPile && c - pile <= maxNet;
+  }
+
+  function buildPool() {
+    const pool = [];
+    const add = (name, take) => pool.push({ name, take });
+    for (let L = 5; L <= 15; L++) {
+      add(`PhasedBargain(opening_limit=${L})`, g => {
+        const p = g.players[g.turn], c = g.current, pile = g.pile;
+        if (p.chips === 0) return true;
+        if (connects(p, c)) {
+          return pile > 0 || g.players.some((o, i) => i !== g.turn && connects(o, c));
+        }
+        const limit = p.chips < 5 ? 8 : g.deck.length >= 12 ? L : 1;
+        return pile >= 3 && c - pile <= limit;
+      });
+    }
+    add('PatientBargain', g => improvedBargain(g, 3, 5, true));
+    add('FlexibleBargain', g => improvedBargain(g, 3, g.players[g.turn].chips < 5 ? 8 : 5, true));
+    add('CounterBargain', g => improvedBargain(g, 5, 8, false));
+    add('FivePointBargain', g => humanBargain(g, 0));
+    add('ThreeChipBargain', g => humanBargain(g, 3));
+    add('AlwaysPass', g => g.players[g.turn].chips === 0);
+    add('Greedy', g => netCost(g) <= 1);
+    for (const [reserve, thr] of [[3, 4], [4, 4], [4, 5]]) {
+      add(`PatientCollector(reserve=${reserve};threshold=${thr})`, g => {
+        const p = g.players[g.turn], n = g.players.length;
+        if (p.chips === 0) return true;
+        if (netCost(g) > 1) return false;
+        if (p.chips <= reserve) return true;
+        for (let d = 1; d < n; d++) {
+          const q = g.players[(g.turn + d) % n];
+          if (takeDelta(q, g.current) - (g.pile + d) <= thr) return true;
+        }
+        return false;
+      });
+    }
+    for (const w of [0.25, 0.5, 0.75]) {
+      add(`Denial(weight=${w})`, g => {
+        let best = 0;
+        g.players.forEach((q, i) => {
+          if (i !== g.turn) best = Math.max(best, g.pile - takeDelta(q, g.current), 0);
+        });
+        return netCost(g) <= 1 + w * best;
+      });
+    }
+    for (let reserve = 3; reserve < 9; reserve++) {
+      for (const pen of [0.25, 0.5, 0.75]) {
+        add(`LiquidityAware(reserve=${reserve};penalty=${pen})`, g => {
+          const p = g.players[g.turn];
+          if (p.chips === 0) return true;
+          const target = Math.min(reserve, g.deck.length);
+          const penalty = chips => pen * Math.max(0, target - chips) ** 2;
+          const takeCost = netCost(g) + penalty(p.chips + g.pile);
+          const passCost = 1 + penalty(p.chips - 1);
+          return takeCost <= passCost;
+        });
+      }
+    }
+    for (const opt of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]) {
+      add(`GapHunter(optimism=${opt})`, g => {
+        const p = g.players[g.turn], c = g.current;
+        const unseen = x => x >= 3 && x <= 35 && x !== c && g.players.every(q => !q.cards.includes(x));
+        let potential = 0;
+        if (c >= 5 && p.cards.includes(c - 2) && unseen(c - 1)) potential = c;
+        if (c <= 33 && p.cards.includes(c + 2) && unseen(c + 1)) potential = Math.max(potential, c + 1);
+        const remaining = g.deck.length;
+        const phase = remaining / (remaining + 6);
+        const bonus = Math.min(opt * phase * potential, Math.max(takeDelta(p, c), 0));
+        return netCost(g) - bonus <= 1.0;
+      });
+    }
+    return pool;
+  }
+  const POOL = buildPool(); // 11 + 5 + 2 + 3 + 3 + 18 + 7 = 49 (the Rust tournament pool)
+  POOL.forEach(b => (b.author = 'rust'));
+
+  /* ------------------------------------------------------------------
+     Bots written for this simulator.
+     ------------------------------------------------------------------ */
+  const phased9 = POOL.find(b => b.name === 'PhasedBargain(opening_limit=9)');
+
+  // Plays PhasedBargain(9), except it exploits forced takes: a player with no
+  // chips must take the card before it can come back to me, so one chip buys
+  // a guaranteed pass. (Chip counts are derivable from public play.)
+  const squeeze = {
+    name: 'Claude Squeeze', author: 'claude',
+    take(g) {
+      const p = g.players[g.turn];
+      if (p.chips === 0) return true;
+      if (g.players.some((o, i) => i !== g.turn && o.chips === 0)) return netCost(g) <= 1;
+      return phased9.take(g);
+    },
+  };
+
+  // Monte Carlo: deal the unseen cards at random into the deck, play the game
+  // out to the end for each option (everyone following PhasedBargain(9) as the
+  // rollout policy), and pick the option that wins more often. Both options
+  // share the same random deals within each rollout.
+  function monteCarlo(rollouts) {
+    return {
+      name: `Claude MonteCarlo(rollouts=${rollouts})`, author: 'claude',
+      take(g) {
+        const me = g.turn, p = g.players[me];
+        if (p.chips === 0) return true;
+        const held = new Set(g.players.flatMap(q => q.cards));
+        const unseen = [];
+        for (let v = MIN; v <= MAX; v++) if (!held.has(v) && v !== g.current) unseen.push(v);
+        const util = { take: 0, pass: 0 };
+        for (let r = 0; r < rollouts; r++) {
+          shuffle(unseen, Math.random);
+          const deal = unseen.slice(0, g.deck.length);
+          for (const a of ['take', 'pass']) {
+            const sim = {
+              players: g.players.map(q => ({ chips: q.chips, cards: q.cards.slice() })),
+              deck: deal.slice(), current: g.current, pile: g.pile, turn: g.turn,
+              over: false, startChips: g.startChips,
+            };
+            act(sim, a);
+            while (!sim.over) act(sim, phased9.take(sim) || sim.players[sim.turn].chips === 0 ? 'take' : 'pass');
+            const sc = sim.players.map(score);
+            const mine = sc[me];
+            const best = Math.min(...sc.filter((_, i) => i !== me));
+            util[a] += (mine < best ? 1 : mine === best ? 0.5 : 0) + 0.002 * Math.max(-20, Math.min(20, best - mine));
+          }
+        }
+        return util.take >= util.pass;
+      },
+    };
+  }
+  POOL.push(squeeze, monteCarlo(40), monteCarlo(150));
+
+  function botChoose(g, bot) {
+    const p = g.players[g.turn];
+    return bot.take(g) || p.chips === 0 ? 'take' : 'pass';
+  }
+
+  function results(g) {
+    const rows = g.players.map((p, i) => ({
+      i, name: p.name, cardPts: cardPoints(p.cards), chips: p.chips, total: score(p), runs: runsOf(p.cards),
+    }));
+    const best = Math.min(...rows.map(r => r.total));
+    rows.forEach(r => (r.winner = r.total === best));
+    return rows.sort((a, b) => a.total - b.total);
+  }
+
+  return { MIN, MAX, REMOVED, startChips, runsOf, cardPoints, score, newGame, act, takeDelta, POOL, botChoose, results, shuffle };
+})();
+
+</script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stageEl = $('stage'), seatsEl = $('seats');
+  let G = null, timer = null, logLines = [], showAllChips = false;
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const speed = () => Number($('sel-speed').value);
+
+  function startGame() {
+    clearTimeout(timer);
+    const n = Number($('sel-bots').value), kind = $('sel-pool').value;
+    const rust = NT.POOL.filter(b => b.author === 'rust'), claude = NT.POOL.filter(b => b.author === 'claude');
+    let bots;
+    if (kind === 'rust') bots = NT.shuffle([...rust], Math.random).slice(0, n);
+    else if (kind === 'strong') {
+      const top = [6, 7, 8, 9, 10].map(L => `PhasedBargain(opening_limit=${L})`);
+      bots = NT.shuffle([...claude, ...rust.filter(b => top.includes(b.name))], Math.random).slice(0, n);
+    } else { // mixed: one of Claude's bots plus the Rust pool
+      bots = [claude[Math.floor(Math.random() * claude.length)]]
+        .concat(NT.shuffle([...rust], Math.random).slice(0, n - 1));
+      NT.shuffle(bots, Math.random);
+    }
+    const specs = [{ name: 'You', human: true, bot: null }]
+      .concat(bots.map(b => ({ name: b.name, human: false, bot: b })));
+    G = NT.newGame(specs);
+    logLines = [];
+    const first = G.players[G.turn];
+    say(`New game: ${G.players.length} players, ${G.startChips} chips each. ${first.human ? 'You start' : first.name + ' starts'}.`);
+    render();
+    schedule();
+  }
+
+  function say(t) { logLines.unshift(t); if (logLines.length > 6) logLines.pop(); }
+
+  function describe(ev) {
+    const p = G.players[ev.player], who = p.human ? 'You' : p.name;
+    if (ev.type === 'pass') return `${who} pass${p.human ? '' : 'es'} on ${ev.card} (pile ${ev.pile}).`;
+    return `${who} take${p.human ? '' : 's'} ${ev.card}${ev.chips ? ' and ' + plural(ev.chips, 'chip') : ''}.`;
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    if (!G || G.over || G.players[G.turn].human) return;
+    const gid = G;
+    timer = setTimeout(() => {
+      if (G !== gid || G.over) return;
+      const q = G.players[G.turn];
+      if (!q.human) step(NT.botChoose(G, q.bot));
+    }, speed());
+  }
+
+  function step(action) {
+    const ev = NT.act(G, action);
+    say(describe(ev));
+    if (G.over) say('Last card taken. Chips now count.');
+    render();
+    schedule();
+  }
+
+  function humanAct(a) {
+    if (!G || G.over || !G.players[G.turn].human) return;
+    if (a === 'pass' && G.players[G.turn].chips < 1) return;
+    step(a);
+  }
+
+  function hint(p, c, pile) {
+    const d = NT.takeDelta(p, c);
+    let t;
+    if (p.cards.includes(c - 1) && p.cards.includes(c + 1)) t = `Joins two of your runs: <span class="good">saves ${-d}</span>`;
+    else if (p.cards.includes(c - 1)) t = `Extends your run: <span class="good">costs 0</span>`;
+    else if (p.cards.includes(c + 1)) t = `Sits under your run: <span class="good">saves 1</span>`;
+    else t = `New card: <span class="bad">adds ${c}</span>`;
+    if (pile) t += `, minus ${pile} from chips. Net <b>${d - pile > 0 ? '+' : ''}${d - pile}</b>`;
+    return t + '.';
+  }
+
+  function renderStage() {
+    if (G.over) { renderResults(); return; }
+    const cur = G.players[G.turn], mine = cur.human, v = G.current;
+    const canPass = cur.chips > 0;
+    stageEl.innerHTML = `
+      <div class="open"><span class="num" aria-label="Open card ${v}">${v}</span>
+        <span class="pile">chips on card: <b>${G.pile}</b></span></div>
+      <p class="status" aria-live="polite">${mine ? 'Your move' : esc(cur.name) + ' is deciding…'}</p>
+      ${mine ? `<p class="hint">${hint(cur, v, G.pile)}</p>` : ''}
+      <div class="btns">
+        <button class="act pass" id="b-pass" type="button" ${mine && canPass ? '' : 'disabled'}>No thanks! (N)<small>${mine ? (canPass ? `pay 1 of your ${cur.chips} chips` : 'no chips: must take') : '&nbsp;'}</small></button>
+        <button class="act take" id="b-take" type="button" ${mine ? '' : 'disabled'}>Take ${v} (T)<small>${mine ? (G.pile ? '+' + plural(G.pile, 'chip') : 'no chips on it') : '&nbsp;'}</small></button>
+      </div>
+      <div class="meta">${G.deck.length + 1} cards left including this one · ${NT.REMOVED} removed unseen</div>
+      <ul class="log">${logLines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>`;
+    $('b-pass').addEventListener('click', () => humanAct('pass'));
+    $('b-take').addEventListener('click', () => humanAct('take'));
+  }
+
+  function renderResults() {
+    const rows = NT.results(G);
+    const winners = rows.filter(r => r.winner);
+    const youWon = winners.some(r => G.players[r.i].human);
+    const you = rows.find(r => G.players[r.i].human);
+    const head = youWon ? (winners.length > 1 ? 'You tie for the win' : 'You win')
+      : `${winners.map(r => r.name).join(' and ')} ${winners.length > 1 ? 'tie' : 'wins'}`;
+    stageEl.innerHTML = `
+      <h2>${esc(head)}</h2>
+      <p class="hint">${youWon ? '' : `You finished ${rows.indexOf(you) + 1} of ${rows.length}. `}Lowest total wins; all chips are now shown.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Player</th><th>Cards</th><th>Chips</th><th>Total</th></tr></thead>
+        <tbody>${rows.map(r => `<tr class="${r.winner ? 'win' : ''}"><td>${esc(r.name)}${r.winner ? ' ★' : ''}</td><td>${r.cardPts}</td><td>−${r.chips}</td><td>${r.total}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div><button class="linkbtn" id="btn-again" type="button">Play again</button></div>
+      <ul class="log">${logLines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>`;
+    $('btn-again').addEventListener('click', startGame);
+  }
+
+  function handHtml(p) {
+    if (!p.cards.length) return '<span class="none">no cards</span>';
+    const cov = new Set();
+    NT.runsOf(p.cards).forEach(r => r.slice(1).forEach(c => cov.add(c)));
+    return [...p.cards].sort((a, b) => a - b)
+      .map(c => cov.has(c) ? `<span class="cov" title="Part of a run, does not score">${c}</span>` : c).join(' ');
+  }
+
+  function renderSeats() {
+    const reveal = showAllChips || G.over;
+    const seat = (p, i) => `
+      <div class="seat${!G.over && G.turn === i ? ' active' : ''}">
+        <div class="row"><span class="name">${esc(p.name)}</span>
+          <span class="stats">chips <b>${p.human || reveal ? p.chips : '?'}</b> · cards <b>${NT.cardPoints(p.cards)}</b></span></div>
+        <div class="cards">${handHtml(p)}</div>
+      </div>`;
+    seatsEl.innerHTML = G.players.map((p, i) => p.human ? '' : seat(p, i)).join('');
+    $('me').innerHTML = G.players.map((p, i) => p.human ? seat(p, i) : '').join('');
+  }
+
+  function render() { if (G) { renderStage(); renderSeats(); } }
+
+  $('btn-new').addEventListener('click', startGame);
+  $('sel-speed').addEventListener('change', schedule);
+  $('chk-chips').addEventListener('change', e => { showAllChips = e.target.checked; render(); });
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target && e.target.tagName;
+    if (t === 'SELECT' || t === 'INPUT') return;
+    const k = e.key.toLowerCase();
+    if (k === 'n') humanAct('pass'); else if (k === 't') humanAct('take');
+  });
+
+  startGame();
+})();
+</script>
