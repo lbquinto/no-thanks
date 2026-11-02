@@ -116,6 +116,7 @@
         <option value="mixed" selected>Mixed</option>
         <option value="rust">Rust pool only</option>
         <option value="strong">Strongest</option>
+        <option value="random">Random (all 52)</option>
       </select>
     </label>
     <label for="sel-speed">Bot speed
@@ -124,6 +125,7 @@
       </select>
     </label>
     <label for="chk-chips"><input type="checkbox" id="chk-chips"> Show everyone's chips</label>
+    <label for="chk-hide"><input type="checkbox" id="chk-hide"> Hide bot strategies</label>
     <button class="linkbtn" id="btn-new" type="button">New game</button>
   </div>
 
@@ -138,7 +140,7 @@
       <li>Pass by paying a chip, or take the card and every chip on it. With no chips you must take it. Whoever takes a card turns over the next one.</li>
       <li>In a run of consecutive numbers only the lowest card scores; the others are shown struck through. Each chip left is −1.</li>
       <li>Opponents' chips are hidden until the end unless you tick the box.</li>
-      <li>Bots: "Rust pool" is the 49 strategies from your tournament file, ported to JavaScript (over 1M five-player games each bot's win rate matches the Rust program's within 0.5 points). "Mixed" seats one of three bots I wrote plus the Rust pool; "Strongest" seats my three plus PhasedBargain with opening limits 6 to 10, the best Rust bots.</li>
+      <li>Bots: "Rust pool" is the 49 strategies from your tournament file, ported to JavaScript (over 1M five-player games each bot's win rate matches the Rust program's within 0.5 points). "Mixed" seats one of three bots I wrote plus the Rust pool; "Strongest" seats my three plus PhasedBargain with opening limits 6 to 10, the best Rust bots. "Random" draws from all 52 with no guarantees, so most seats will be Rust bots.</li>
       <li>My bots, in five-player games of about 500 to 4,500 each: Claude MonteCarlo(rollouts=150) won about 54% against four of the top five Rust bots (an equal share is 20%; PhasedBargain(9) gets about 24%, so it is clearly stronger). MonteCarlo(40) won about 42%. Claude Squeeze won about 24%, no better than PhasedBargain(9) it is built on. Monte Carlo plays by simulating the rest of the game from the unseen cards, and it aims to win, not to post a low score.</li>
       <li>Rules checked against the <a href="https://en.wikipedia.org/wiki/No_Thanks!_(game)" target="_blank" rel="noopener">published rules summary</a> and the <a href="https://www.amigo.games/game/nothanks" target="_blank" rel="noopener">publisher's page</a>.</li>
     </ul>
@@ -388,7 +390,7 @@ const NT = (() => {
 (() => {
   const $ = id => document.getElementById(id);
   const stageEl = $('stage'), seatsEl = $('seats');
-  let G = null, timer = null, logLines = [], showAllChips = false;
+  let G = null, timer = null, logLines = [], showAllChips = false, hideNames = false;
 
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -399,7 +401,8 @@ const NT = (() => {
     const n = Number($('sel-bots').value), kind = $('sel-pool').value;
     const rust = NT.POOL.filter(b => b.author === 'rust'), claude = NT.POOL.filter(b => b.author === 'claude');
     let bots;
-    if (kind === 'rust') bots = NT.shuffle([...rust], Math.random).slice(0, n);
+    if (kind === 'random') bots = NT.shuffle([...NT.POOL], Math.random).slice(0, n);
+    else if (kind === 'rust') bots = NT.shuffle([...rust], Math.random).slice(0, n);
     else if (kind === 'strong') {
       const top = [6, 7, 8, 9, 10].map(L => `PhasedBargain(opening_limit=${L})`);
       bots = NT.shuffle([...claude, ...rust.filter(b => top.includes(b.name))], Math.random).slice(0, n);
@@ -413,15 +416,20 @@ const NT = (() => {
     G = NT.newGame(specs);
     logLines = [];
     const first = G.players[G.turn];
-    say(`New game: ${G.players.length} players, ${G.startChips} chips each. ${first.human ? 'You start' : first.name + ' starts'}.`);
+    say(`New game: ${G.players.length} players, ${G.startChips} chips each. ${first.human ? 'You start' : '{p' + G.turn + '} starts'}.`);
     render();
     schedule();
   }
 
+  // Display name for seat i. With strategies hidden, bots are "Bot 1", "Bot 2"... until the game ends.
+  const dn = i => { const p = G.players[i]; return p.human ? 'You' : (hideNames && !G.over) ? 'Bot ' + i : p.name; };
+  // Log lines hold {p<seat>} tokens so names can be hidden or shown when drawn.
+  const logHtml = () => logLines.map(l => `<li>${esc(l).replace(/\{p(\d+)\}/g, (m, i) => esc(dn(+i)))}</li>`).join('');
+
   function say(t) { logLines.unshift(t); if (logLines.length > 6) logLines.pop(); }
 
   function describe(ev) {
-    const p = G.players[ev.player], who = p.human ? 'You' : p.name;
+    const p = G.players[ev.player], who = p.human ? 'You' : '{p' + ev.player + '}';
     if (ev.type === 'pass') return `${who} pass${p.human ? '' : 'es'} on ${ev.card} (pile ${ev.pile}).`;
     return `${who} take${p.human ? '' : 's'} ${ev.card}${ev.chips ? ' and ' + plural(ev.chips, 'chip') : ''}.`;
   }
@@ -469,14 +477,14 @@ const NT = (() => {
     stageEl.innerHTML = `
       <div class="open"><span class="num" aria-label="Open card ${v}">${v}</span>
         <span class="pile">chips on card: <b>${G.pile}</b></span></div>
-      <p class="status" aria-live="polite">${mine ? 'Your move' : esc(cur.name) + ' is deciding…'}</p>
+      <p class="status" aria-live="polite">${mine ? 'Your move' : esc(dn(G.turn)) + ' is deciding…'}</p>
       ${mine ? `<p class="hint">${hint(cur, v, G.pile)}</p>` : ''}
       <div class="btns">
         <button class="act pass" id="b-pass" type="button" ${mine && canPass ? '' : 'disabled'}>No thanks! (N)<small>${mine ? (canPass ? `pay 1 of your ${cur.chips} chips` : 'no chips: must take') : '&nbsp;'}</small></button>
         <button class="act take" id="b-take" type="button" ${mine ? '' : 'disabled'}>Take ${v} (T)<small>${mine ? (G.pile ? '+' + plural(G.pile, 'chip') : 'no chips on it') : '&nbsp;'}</small></button>
       </div>
       <div class="meta">${G.deck.length + 1} cards left including this one · ${NT.REMOVED} removed unseen</div>
-      <ul class="log">${logLines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>`;
+      <ul class="log">${logHtml()}</ul>`;
     $('b-pass').addEventListener('click', () => humanAct('pass'));
     $('b-take').addEventListener('click', () => humanAct('take'));
   }
@@ -487,16 +495,16 @@ const NT = (() => {
     const youWon = winners.some(r => G.players[r.i].human);
     const you = rows.find(r => G.players[r.i].human);
     const head = youWon ? (winners.length > 1 ? 'You tie for the win' : 'You win')
-      : `${winners.map(r => r.name).join(' and ')} ${winners.length > 1 ? 'tie' : 'wins'}`;
+      : `${winners.map(r => dn(r.i)).join(' and ')} ${winners.length > 1 ? 'tie' : 'wins'}`;
     stageEl.innerHTML = `
       <h2>${esc(head)}</h2>
       <p class="hint">${youWon ? '' : `You finished ${rows.indexOf(you) + 1} of ${rows.length}. `}Lowest total wins; all chips are now shown.</p>
       <div class="tablewrap"><table>
         <thead><tr><th>Player</th><th>Cards</th><th>Chips</th><th>Total</th></tr></thead>
-        <tbody>${rows.map(r => `<tr class="${r.winner ? 'win' : ''}"><td>${esc(r.name)}${r.winner ? ' ★' : ''}</td><td>${r.cardPts}</td><td>−${r.chips}</td><td>${r.total}</td></tr>`).join('')}</tbody>
+        <tbody>${rows.map(r => `<tr class="${r.winner ? 'win' : ''}"><td>${esc(dn(r.i))}${r.winner ? ' ★' : ''}</td><td>${r.cardPts}</td><td>−${r.chips}</td><td>${r.total}</td></tr>`).join('')}</tbody>
       </table></div>
       <div><button class="linkbtn" id="btn-again" type="button">Play again</button></div>
-      <ul class="log">${logLines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>`;
+      <ul class="log">${logHtml()}</ul>`;
     $('btn-again').addEventListener('click', startGame);
   }
 
@@ -512,7 +520,7 @@ const NT = (() => {
     const reveal = showAllChips || G.over;
     const seat = (p, i) => `
       <div class="seat${!G.over && G.turn === i ? ' active' : ''}">
-        <div class="row"><span class="name">${esc(p.name)}</span>
+        <div class="row"><span class="name">${esc(dn(i))}</span>
           <span class="stats">chips <b>${p.human || reveal ? p.chips : '?'}</b> · cards <b>${NT.cardPoints(p.cards)}</b></span></div>
         <div class="cards">${handHtml(p)}</div>
       </div>`;
@@ -524,6 +532,7 @@ const NT = (() => {
 
   $('btn-new').addEventListener('click', startGame);
   $('sel-speed').addEventListener('change', schedule);
+  $('chk-hide').addEventListener('change', e => { hideNames = e.target.checked; render(); });
   $('chk-chips').addEventListener('change', e => { showAllChips = e.target.checked; render(); });
   document.addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
