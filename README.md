@@ -2,7 +2,9 @@
 
 A single-file browser version of the card game *No Thanks!* (Thorsten Gimmler) for one human against 2 to 6 bots. No build step and no dependencies: open `index.html`.
 
-> Game page and three bots (Claude MonteCarlo ×2, Claude Squeeze) written with Claude (Anthropic). The 49-bot Rust pool and the original simulations are by Ben and Laura.
+Game page and three bots (Claude MonteCarlo ×2, Claude Squeeze) written with Claude (Anthropic). The 49-bot Rust pool and the original simulations are by Ben and Laura.
+
+Live website at https://lbquinto.github.io/no-thanks/
 
 ## Rules implemented
 Cards 3 to 35, 9 removed unseen (24 played). Starting chips: 11 for 3 to 5 players, 9 for 6, 7 for 7. Pass by paying a chip, or take the card and every chip on it; with no chips you must take it. Only the lowest card of each run of consecutive numbers scores, and each chip left is -1. Lowest total wins.
